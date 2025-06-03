@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const request = require('request');
+const request = require('axios');
 
 const app = express();
 const VERIFY_TOKEN = 'rsvp_verify_123';  // My verify token
@@ -8,36 +8,10 @@ const PAGE_ACCESS_TOKEN = 'EAAT2dfyC1hcBOx5a5ypYCvi8AWUjvKAu1NZA1FPPkZAmodpfxDDv
 
 app.use(bodyParser.json());
 
-const userSessions = {};
+// In-memory storage for guests' names by senderId
+const guestLists = {};
 
-// Helper to send a message to the user
-function sendMessage(senderId, text) {
-  const messageData = {
-    recipient: { id: senderId },
-    message: { text }
-  };
-
-  console.log(`Sending message to ${senderId}: ${text}`);
-
-  request({
-    uri: 'https://graph.facebook.com/v18.0/me/messages',
-    qs: { access_token: PAGE_ACCESS_TOKEN },
-    method: 'POST',
-    json: messageData
-  }, (err, res, body) => {
-    if (err) {
-      console.error('Unable to send message:', err);
-    } else {
-      console.log('Message sent successfully:', body);
-    }
-  });
-}
-
-// Helper to pick a random message
-function getRandomMessage(messages) {
-  return messages[Math.floor(Math.random() * messages.length)];
-}
-
+// Facebook webhook verification
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -51,89 +25,74 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-app.post('/webhook', (req, res) => {
+// Helper function: Randomize reply from array of texts
+function randomReply(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// Webhook to handle messages and referral clicks
+app.post('/webhook', async (req, res) => {
   const body = req.body;
 
   if (body.object === 'page') {
-    body.entry.forEach(entry => {
+    for (const entry of body.entry) {
       const webhookEvent = entry.messaging[0];
       console.log('Webhook event:', webhookEvent);
 
       const senderId = webhookEvent.sender.id;
 
+      // Handle referral (RSVP button clicked)
       if (webhookEvent.referral && webhookEvent.referral.ref === 'rsvp') {
         console.log(`Referral from user ${senderId}: RSVP clicked`);
 
-        userSessions[senderId] = {
-          stage: 'collecting_names',
-          names: []
-        };
+        // Initialize guest list for user if not exist
+        if (!guestLists[senderId]) guestLists[senderId] = [];
 
-        sendMessage(senderId,
-          `Greetings!\n\nYou are invited to the wedding of Voughn and Emelyn.\n\nPlease let us know if you can come.\nJust reply with your names so we can save your seats and prepare your table.\n\nThank you, and we’re excited to celebrate this special day with you! 💕`
+        await sendMessage(senderId, 
+          `Greetings! \n\nYou are invited to the wedding of Voughn and Emelyn.\n\nPlease let us know if you can come.\nJust reply with your names so we can save your seats and prepare your table.\n\nThank you, and we’re excited to celebrate this special day with you! 💕`
         );
-        return;
       }
 
+      // Handle user messages (names or "No")
       if (webhookEvent.message && webhookEvent.message.text) {
         const userMessage = webhookEvent.message.text.trim();
         console.log(`Message from user ${senderId}: ${userMessage}`);
 
-        const session = userSessions[senderId];
-
-        if (session && session.stage === 'collecting_names') {
-          if (/^(no|none|that's all|done)$/i.test(userMessage)) {
-            if (session.names.length === 0) {
-              sendMessage(senderId, "No problem! Let us know if you change your mind.");
-            } else {
-              const finalList = session.names
-                .map(name => `• ${name}`)
-                .join('\n');
-              sendMessage(senderId, `Thank you! Here's the list of names we’ve recorded:\n\n${finalList}\n\nWe're excited to see you at our wedding! 🎉`);
-            }
-
-            delete userSessions[senderId];
-            return;
+        // If user replies 'No' (case insensitive)
+        if (userMessage.toLowerCase() === 'no') {
+          if (guestLists[senderId] && guestLists[senderId].length > 0) {
+            await sendMessage(senderId, `Thank you! Your RSVP list:\n` + formatGuestList(guestLists[senderId]) + `\nWe look forward to celebrating with you! 🎉`);
+            delete guestLists[senderId];  // Clear list after confirmation
+          } else {
+            await sendMessage(senderId, `You haven't added any names yet. Please reply with the names or type 'No' to finish.`);
           }
-
-          session.names.push(userMessage);
-
-          const gotMessages = [
-            "✅ Got it!",
-            "👍 Name saved.",
-            "📌 Added.",
-            "👌 Thanks!",
-            "📝 Noted!"
-          ];
-
-          const askMoreMessages = [
-            "Would you like to add another name?",
-            "Want to add someone else?",
-            "Anyone else you'd like to include?",
-            "Shall we add another guest?",
-            "Feel free to share more names!"
-          ];
-
-          const howToFinishTips = [
-            `If you're done, just reply "No".`,
-            `When you're finished, type "No".`,
-            `If no more guests, simply reply "No".`,
-            `Reply "No" when you're done adding names.`,
-            `Done? Just type "No".`
-          ];
-
-          const gotMsg = getRandomMessage(gotMessages);
-          const askMore = getRandomMessage(askMoreMessages);
-          const tip = getRandomMessage(howToFinishTips);
-
-          sendMessage(senderId, `${gotMsg} ${askMore} ${tip}`);
-          return;
+          return res.sendStatus(200);
         }
 
-        // Default response if user hasn't clicked RSVP
-        sendMessage(senderId, "Hi! To RSVP, please click the RSVP button on our website first so we can properly record your names. 😊");
+        // Otherwise, treat message as name(s)
+        if (!guestLists[senderId]) guestLists[senderId] = [];
+
+        // Split by commas, new lines, or "and" to handle multiple names at once
+        const newNames = userMessage.split(/,|\band\b|\n/).map(n => n.trim()).filter(n => n.length > 0);
+
+        guestLists[senderId].push(...newNames);
+
+        // Prepare randomized responses
+        const gotReplies = [
+          `Got ${newNames.length} name${newNames.length > 1 ? 's' : ''}!`,
+          `Thanks for adding ${newNames.length} name${newNames.length > 1 ? 's' : ''}!`,
+          `Added ${newNames.length} to your list!`
+        ];
+
+        const addMoreReplies = [
+          'Would you like to add another name? If none, reply "No".',
+          'Want to add more guests? If you are done, just reply "No".',
+          'Feel free to send more names or reply "No" if you are finished.'
+        ];
+
+        await sendMessage(senderId, `${randomReply(gotReplies)}\n\n${randomReply(addMoreReplies)}`);
       }
-    });
+    }
 
     res.status(200).send('EVENT_RECEIVED');
   } else {
@@ -141,6 +100,36 @@ app.post('/webhook', (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log('Webhook server is listening on port 3000');
+// Format guest list as bullet points
+function formatGuestList(names) {
+  return names.map(name => `• ${name}`).join('\n');
+}
+
+// Function to send messages to the user using axios
+async function sendMessage(senderId, text) {
+  const messageData = {
+    recipient: { id: senderId },
+    message: { text }
+  };
+
+  console.log(`Sending message to ${senderId}: ${text}`);
+
+  try {
+    const response = await axios.post(
+      'https://graph.facebook.com/v18.0/me/messages',
+      messageData,
+      {
+        params: { access_token: PAGE_ACCESS_TOKEN }
+      }
+    );
+    console.log('Message sent successfully:', response.data);
+  } catch (error) {
+    console.error('Unable to send message:', error.response ? error.response.data : error.message);
+  }
+}
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Webhook server is listening on port ${PORT}`);
 });
