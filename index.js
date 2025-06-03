@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const request = require('axios');
+const axios = require('axios');
 
 const app = express();
 const VERIFY_TOKEN = 'rsvp_verify_123';  // My verify token
