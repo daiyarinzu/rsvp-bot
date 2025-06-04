@@ -233,7 +233,7 @@ app.post("/webhook", async (req, res) => {
         // Fallback if they didn’t click RSVP
         await sendMessage(
           senderId,
-          "Hi! To RSVP, please click the RSVP button here https://grandlineoflove.my.canva.site/ first so we can properly record your names. 😊"
+          "Hi! To RSVP, please click the RSVP button here https://grandlineoflove.my.canva.site/ so we can properly record your names. 😊"
         );
       }
     }
