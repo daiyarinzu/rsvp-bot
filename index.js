@@ -41,7 +41,10 @@ async function saveNameToSheet(name, userId) {
 
     console.log(`✅ Saved "${name}" to Google Sheet.`);
   } catch (error) {
-    console.error("❌ Error saving to Google Sheets:", error.message);
+    console.error(
+      `❌ Failed to save "${name}" to Google Sheets:`,
+      error.message
+    );
   }
 }
 
@@ -88,11 +91,11 @@ app.get("/webhook", (req, res) => {
 });
 
 // Handle webhook events
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
   const body = req.body;
 
   if (body.object === "page") {
-    body.entry.forEach((entry) => {
+    for (const entry of body.entry) {
       const webhookEvent = entry.messaging[0];
       console.log("📩 Webhook event:", webhookEvent);
 
@@ -105,11 +108,11 @@ app.post("/webhook", (req, res) => {
           names: [],
         };
 
-        sendMessage(
+        await sendMessage(
           senderId,
           `Greetings!\n\nYou are invited to the wedding of Voughn and Emelyn.\n\nPlease let us know if you can come.\nJust reply with your names so we can save your seats and prepare your table.\n\nThank you, and we’re excited to celebrate this special day with you! 💕`
         );
-        return;
+        continue;
       }
 
       // Handle message
@@ -132,18 +135,18 @@ app.post("/webhook", (req, res) => {
                 .join("\n");
 
               // Save all collected names
-              session.names.forEach((name) => {
-                saveNameToSheet(name, senderId);
-              });
+              await Promise.all(
+                session.names.map((name) => saveNameToSheet(name, senderId))
+              );
 
-              sendMessage(
+              await sendMessage(
                 senderId,
                 `🎉 Thank you! Here's the list of names we’ve recorded:\n\n${finalList}\n\nWe look forward to seeing you! 💖`
               );
             }
 
             delete userSessions[senderId];
-            return;
+            continue;
           }
 
           // Split input into multiple names (comma, newline, etc.)
@@ -187,17 +190,17 @@ app.post("/webhook", (req, res) => {
           const askMore = getRandomMessage(askMoreMessages);
           const tip = getRandomMessage(howToFinishTips);
 
-          sendMessage(senderId, `${gotMsg} ${askMore} ${tip}`);
-          return;
+          await sendMessage(senderId, `${gotMsg} ${askMore} ${tip}`);
+          continue;
         }
 
         // Fallback if they didn’t click RSVP
-        sendMessage(
+        await sendMessage(
           senderId,
           "Hi! To RSVP, please click the RSVP button on our website first so we can properly record your names. 😊"
         );
       }
-    });
+    }
 
     res.status(200).send("EVENT_RECEIVED");
   } else {
