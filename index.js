@@ -34,6 +34,7 @@ async function saveNameToSheet(name, userId) {
       spreadsheetId: SHEET_ID,
       range: "Sheet1!A:C",
       valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS", // 🟢 This ensures each value gets its own row
       requestBody: {
         values: [[name, timestamp, userId]],
       },
