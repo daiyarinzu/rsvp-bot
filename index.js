@@ -72,6 +72,32 @@ async function sendMessage(senderId, text) {
   }
 }
 
+// Set session timeouts
+function setSessionTimeouts(senderId) {
+  const session = userSessions[senderId];
+  if (!session) return;
+
+  clearTimeout(session.reminderTimeout);
+  clearTimeout(session.cleanupTimeout);
+
+  // ⏳ After 2 minutes, send gentle nudge
+  session.reminderTimeout = setTimeout(() => {
+    sendMessage(
+      senderId,
+      '👋 Just checking in — are you still there? You can keep adding names or reply "No" to finish.'
+    );
+  }, 2 * 60 * 1000); // 2 minutes
+
+  // ⌛ After 5 minutes, end session
+  session.cleanupTimeout = setTimeout(() => {
+    sendMessage(
+      senderId,
+      "⏱️ Looks like you're away. We'll end this RSVP session for now. You can start again anytime. 😊"
+    );
+    delete userSessions[senderId];
+  }, 5 * 60 * 1000); // 5 minutes
+}
+
 // Pick a random message
 function getRandomMessage(messages) {
   return messages[Math.floor(Math.random() * messages.length)];
@@ -107,7 +133,12 @@ app.post("/webhook", async (req, res) => {
         userSessions[senderId] = {
           stage: "collecting_names",
           names: [],
+          lastUpdated: Date.now(),
+          reminderTimeout: null,
+          cleanupTimeout: null,
         };
+
+        setSessionTimeouts(senderId);
 
         await sendMessage(
           senderId,
@@ -146,6 +177,8 @@ app.post("/webhook", async (req, res) => {
               );
             }
 
+            clearTimeout(session.reminderTimeout);
+            clearTimeout(session.cleanupTimeout);
             delete userSessions[senderId];
             continue;
           }
@@ -161,6 +194,8 @@ app.post("/webhook", async (req, res) => {
           session.names = [...session.names, ...names]; // Merge safely
 
           console.log("Updated session names:", session.names);
+          session.lastUpdated = Date.now();
+          setSessionTimeouts(senderId);
 
           // Send random messages
           const gotMessages = [
