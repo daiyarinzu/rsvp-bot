@@ -135,6 +135,12 @@ app.post("/webhook", (req, res) => {
               const finalList = session.names
                 .map((name) => `• ${name}`)
                 .join("\n");
+
+              // Save all collected names when user says no
+              session.names.forEach((name) => {
+                saveNameToSheet(name, senderId);
+              });
+
               sendMessage(
                 senderId,
                 `🎉 Thank you! Here's the list of names we’ve recorded:\n\n${finalList}\n\nWe look forward to seeing you! 💖`
@@ -145,19 +151,14 @@ app.post("/webhook", (req, res) => {
             return;
           }
 
-          // Split names by newline or comma
+          // Split names by comma or newline
           const names = userMessage
-            .split(/\n|,/)
+            .split(/,|\n/)
             .map((name) => name.trim())
             .filter((name) => name.length > 0);
 
-          // Add to session names
+          // Add to session names (do NOT save immediately)
           session.names.push(...names);
-
-          // Save to Google Sheets
-          names.forEach((name) => {
-            saveNameToSheet(name, senderId);
-          });
 
           const gotMessages = [
             "✅ Got it!",
