@@ -1,0 +1,14 @@
+{
+  "name": "rsvp-bot",
+  "version": "1.0.0",
+  "description": "Messenger RSVP bot for Voughn and Emelyn's wedding",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.9.0",
+    "body-parser": "^2.2.0",
+    "express": "^5.1.0"
+  }
+}
