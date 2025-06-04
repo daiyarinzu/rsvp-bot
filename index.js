@@ -15,7 +15,7 @@ const userSessions = {}; // Tracks user progress
 
 // Google Sheets setup
 const auth = new google.auth.GoogleAuth({
-  keyFile: "rsvp-bot-project-f18f8571c0a6", // make sure this JSON file is in your project folder
+  keyFile: "rsvp-bot-project-f18f8571c0a6.json", // make sure this JSON file is in your project folder
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
