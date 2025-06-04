@@ -22,7 +22,7 @@ const auth = new google.auth.GoogleAuth({
 // Google Sheets ID
 const SHEET_ID = "1CKn7Y1lggWaNioRh17f2WphlmD0kesm0s7tmR1vocgQ";
 
-// Helper function to save a name to Google Sheets
+// Save name to Google Sheets
 async function saveNameToSheet(name, userId) {
   try {
     const client = await auth.getClient();
@@ -32,27 +32,27 @@ async function saveNameToSheet(name, userId) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: "Sheet1!A:C", // Sheet name and columns
+      range: "Sheet1!A:C",
       valueInputOption: "RAW",
       requestBody: {
         values: [[name, timestamp, userId]],
       },
     });
 
-    console.log(`Saved "${name}" to Google Sheet.`);
+    console.log(`✅ Saved "${name}" to Google Sheet.`);
   } catch (error) {
-    console.error("Error saving to Google Sheets:", error.message);
+    console.error("❌ Error saving to Google Sheets:", error.message);
   }
 }
 
-// Helper: send message using axios
+// Send message
 async function sendMessage(senderId, text) {
   const messageData = {
     recipient: { id: senderId },
     message: { text },
   };
 
-  console.log(`Sending message to ${senderId}: ${text}`);
+  console.log(`📤 Sending message to ${senderId}: ${text}`);
 
   try {
     const res = await axios.post(
@@ -62,16 +62,13 @@ async function sendMessage(senderId, text) {
         params: { access_token: PAGE_ACCESS_TOKEN },
       }
     );
-    console.log("Message sent successfully:", res.data);
+    console.log("✅ Message sent:", res.data);
   } catch (error) {
-    console.error(
-      "Unable to send message:",
-      error.response?.data || error.message
-    );
+    console.error("❌ Send error:", error.response?.data || error.message);
   }
 }
 
-// Helper: pick a random message
+// Pick a random message
 function getRandomMessage(messages) {
   return messages[Math.floor(Math.random() * messages.length)];
 }
@@ -83,28 +80,26 @@ app.get("/webhook", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("WEBHOOK_VERIFIED");
+    console.log("✅ WEBHOOK_VERIFIED");
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// Handle incoming webhook events
+// Handle webhook events
 app.post("/webhook", (req, res) => {
   const body = req.body;
 
   if (body.object === "page") {
     body.entry.forEach((entry) => {
       const webhookEvent = entry.messaging[0];
-      console.log("Webhook event:", webhookEvent);
+      console.log("📩 Webhook event:", webhookEvent);
 
       const senderId = webhookEvent.sender.id;
 
-      // Handle RSVP referral
+      // Start session if clicked RSVP
       if (webhookEvent.referral && webhookEvent.referral.ref === "rsvp") {
-        console.log(`Referral from user ${senderId}: RSVP clicked`);
-
         userSessions[senderId] = {
           stage: "collecting_names",
           names: [],
@@ -117,10 +112,10 @@ app.post("/webhook", (req, res) => {
         return;
       }
 
-      // Handle user messages
+      // Handle message
       if (webhookEvent.message && webhookEvent.message.text) {
         const userMessage = webhookEvent.message.text.trim();
-        console.log(`Message from user ${senderId}: ${userMessage}`);
+        console.log(`✍️ Message from ${senderId}: ${userMessage}`);
 
         const session = userSessions[senderId];
 
@@ -136,7 +131,7 @@ app.post("/webhook", (req, res) => {
                 .map((name) => `• ${name}`)
                 .join("\n");
 
-              // Save all collected names when user says no
+              // Save all collected names
               session.names.forEach((name) => {
                 saveNameToSheet(name, senderId);
               });
@@ -151,15 +146,16 @@ app.post("/webhook", (req, res) => {
             return;
           }
 
-          // Split names by comma or newline
+          // Split input into multiple names (comma, newline, etc.)
           const names = userMessage
             .split(/,|\n/)
             .map((name) => name.trim())
             .filter((name) => name.length > 0);
 
-          // Add to session names (do NOT save immediately)
+          // Add new names to session (do not save yet)
           session.names.push(...names);
 
+          // Send random messages
           const gotMessages = [
             "✅ Got it!",
             "👍 Name saved.",
@@ -192,7 +188,7 @@ app.post("/webhook", (req, res) => {
           return;
         }
 
-        // Default fallback if user didn’t click RSVP link
+        // Fallback if they didn’t click RSVP
         sendMessage(
           senderId,
           "Hi! To RSVP, please click the RSVP button on our website first so we can properly record your names. 😊"
@@ -206,7 +202,7 @@ app.post("/webhook", (req, res) => {
   }
 });
 
-// Start webhook server
+// Start server
 app.listen(3000, () => {
-  console.log("Webhook server is listening on port 3000");
+  console.log("🚀 Webhook server is listening on port 3000");
 });
