@@ -1,6 +1,8 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const axios = require("axios");
+const fs = require("fs");
+const { google } = require("googleapis");
 
 const app = express();
 const VERIFY_TOKEN = "rsvp_verify_123"; // Your verify token
@@ -10,6 +12,38 @@ const PAGE_ACCESS_TOKEN =
 app.use(bodyParser.json());
 
 const userSessions = {}; // Tracks user progress
+
+// Google Sheets setup
+const auth = new google.auth.GoogleAuth({
+  keyFile: "rsvp-bot-project-f18f8571c0a6", // make sure this JSON file is in your project folder
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+
+// Google Sheets ID
+const SHEET_ID = "1CKn7Y1lggWaNioRh17f2WphlmD0kesm0s7tmR1vocgQ";
+
+// Helper function to save a name to Google Sheets
+async function saveNameToSheet(name, userId) {
+  try {
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: "v4", auth: client });
+
+    const timestamp = new Date().toISOString();
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: "Sheet1!A:C", // Sheet name and columns
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[name, timestamp, userId]],
+      },
+    });
+
+    console.log(`Saved "${name}" to Google Sheet.`);
+  } catch (error) {
+    console.error("Error saving to Google Sheets:", error.message);
+  }
+}
 
 // Helper: send message using axios
 async function sendMessage(senderId, text) {
@@ -111,14 +145,19 @@ app.post("/webhook", (req, res) => {
             return;
           }
 
-          //session.names.push(userMessage);
-
+          // Split names by newline or comma
           const names = userMessage
             .split(/\n|,/)
             .map((name) => name.trim())
             .filter((name) => name.length > 0);
 
+          // Add to session names
           session.names.push(...names);
+
+          // Save to Google Sheets
+          names.forEach((name) => {
+            saveNameToSheet(name, senderId);
+          });
 
           const gotMessages = [
             "✅ Got it!",
