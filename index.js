@@ -152,8 +152,11 @@ app.post("/webhook", (req, res) => {
             .map((name) => name.trim())
             .filter((name) => name.length > 0);
 
-          // Add new names to session (do not save yet)
-          session.names.push(...names);
+          if (!session.names) session.names = [];
+
+          session.names = [...session.names, ...names]; // Merge safely
+
+          console.log("Updated session names:", session.names);
 
           // Send random messages
           const gotMessages = [
